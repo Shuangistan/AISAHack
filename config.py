@@ -44,10 +44,9 @@ class Config:
     warmup_epochs: int = 5
 
     # Multi-task loss: learnable uncertainty weights (Kendall et al.)
-    use_learned_loss_weights: bool = True
-    # Fallback fixed weights if learned weights disabled
+    use_learned_loss_weights: bool = False
     lambda_psi: float = 1.0
-    lambda_force: float = 1.0
+    lambda_force: float = 2.0           # upweight harder task
     lambda_disp: float = 0.1            # lower because field loss is much larger
 
     # ── Mixed precision ──────────────────────────────────────────────────
