@@ -138,7 +138,8 @@ class Trainer:
             self.scaler.scale(total_loss).backward()
             # Gradient clipping for stability
             self.scaler.unscale_(self.optimizer)
-            nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+            all_params = list(self.model.parameters()) + list(self.criterion.parameters())
+            nn.utils.clip_grad_norm_(all_params, max_norm=1.0)
             self.scaler.step(self.optimizer)
             self.scaler.update()
 
@@ -208,12 +209,14 @@ class Trainer:
 
         return {**avg_losses, "metrics": avg_metrics}
 
-    def fit(self, train_loader, val_loader):
+    def fit(self, train_loader, val_loader, start_epoch: int = 1):
         print(f"\n{'='*70}")
         print(f"Training U-Net multi-regression ({self.cfg.epochs} epochs)")
+        if start_epoch > 1:
+            print(f"Resuming from epoch {start_epoch}")
         print(f"{'='*70}\n")
 
-        for epoch in range(1, self.cfg.epochs + 1):
+        for epoch in range(start_epoch, self.cfg.epochs + 1):
             t0 = time.time()
 
             # ── Train ────────────────────────────────────────────────────
@@ -283,14 +286,26 @@ class Trainer:
             "best_val_loss": self.best_val_loss,
         }, path)
 
-    def load_checkpoint(self, path: str):
+    def load_checkpoint(self, path: str, resume: bool = False) -> int:
+        """Load checkpoint. Returns the epoch to resume from (start_epoch)."""
         ckpt = torch.load(path, map_location=self.device)
         self.model.load_state_dict(ckpt["model_state_dict"])
         if "optimizer_state_dict" in ckpt:
             self.optimizer.load_state_dict(ckpt["optimizer_state_dict"])
         if "criterion_state_dict" in ckpt:
             self.criterion.load_state_dict(ckpt["criterion_state_dict"])
-        print(f"[Checkpoint] Loaded from {path} (epoch {ckpt.get('epoch', '?')})")
+        saved_epoch = ckpt.get("epoch", 0)
+        if resume:
+            if "scheduler_state_dict" in ckpt:
+                self.scheduler.load_state_dict(ckpt["scheduler_state_dict"])
+            if "scaler_state_dict" in ckpt:
+                self.scaler.load_state_dict(ckpt["scaler_state_dict"])
+            if "best_val_loss" in ckpt:
+                self.best_val_loss = ckpt["best_val_loss"]
+            print(f"[Checkpoint] Resuming from {path} (epoch {saved_epoch})")
+            return saved_epoch + 1
+        print(f"[Checkpoint] Loaded from {path} (epoch {saved_epoch})")
+        return 1
 
     def _save_history(self):
         path = os.path.join(self.cfg.log_dir, "training_history.json")
@@ -347,6 +362,8 @@ def parse_args():
     parser.add_argument("--max_samples", type=int, default=None,
                         help="Limit dataset size (for debugging)")
     parser.add_argument("--no_amp", action="store_true", help="Disable mixed precision")
+    parser.add_argument("--resume", action="store_true",
+                        help="Resume training from --checkpoint")
     return parser.parse_args()
 
 
@@ -400,7 +417,11 @@ def main():
         trainer.load_checkpoint(ckpt_path)
         evaluate(trainer, test_loader, norm_stats)
     else:
-        trainer.fit(train_loader, val_loader)
+        start_epoch = 1
+        if args.resume:
+            ckpt_path = os.path.join(cfg.checkpoint_dir, args.checkpoint)
+            start_epoch = trainer.load_checkpoint(ckpt_path, resume=True)
+        trainer.fit(train_loader, val_loader, start_epoch=start_epoch)
         # Final test evaluation
         trainer.load_checkpoint(os.path.join(cfg.checkpoint_dir, "best_model.pt"))
         evaluate(trainer, test_loader, norm_stats)

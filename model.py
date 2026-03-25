@@ -215,8 +215,9 @@ class MultiTaskLoss(nn.Module):
 
         if self.use_learned:
             # precision = 1 / σ²  = exp(-log_var)
-            precisions = torch.exp(-self.log_vars)
-            weighted = precisions * losses + self.log_vars
+            log_vars_clamped = self.log_vars.clamp(-6, 6)
+            precisions = torch.exp(-log_vars_clamped)
+            weighted = precisions * losses + log_vars_clamped
             total = weighted.sum()
             weights_display = precisions.detach()
         else:
