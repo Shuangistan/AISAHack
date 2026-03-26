@@ -1,13 +1,19 @@
 """
-Configuration for Mechanical MNIST Cahn-Hilliard U-Net training.
+Configuration for Mechanical MNIST Cahn-Hilliard training.
 Adjust these parameters based on your GPU memory and dataset location.
 """
+import dataclasses
+import json
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import List
 
 
 @dataclass
 class Config:
+    # ── Model selection ──────────────────────────────────────────────────
+    model_name: str = "unet"             # key into models.MODEL_REGISTRY
+
     # ── Dataset ──────────────────────────────────────────────────────────
     data_root: str = "./data"
     img_size: int = 256                  # resize 400×400 → 256×256
@@ -60,6 +66,16 @@ class Config:
     # ── Logging ──────────────────────────────────────────────────────────
     log_dir: str = "./logs"
     print_every: int = 1000              # print metrics every N batches
+
+    def to_json(self, path):
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w") as f:
+            json.dump(dataclasses.asdict(self), f, indent=2)
+
+    @classmethod
+    def from_json(cls, path) -> "Config":
+        with open(path) as f:
+            return cls(**json.load(f))
 
 
 # Convenience instance
