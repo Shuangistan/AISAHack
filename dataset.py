@@ -112,14 +112,18 @@ class MechMNISTCahnHilliard(Dataset):
         norm_stats: Optional[NormStats] = None,
         indices: Optional[list] = None,
         max_samples: Optional[int] = None,
+        input_transform=None,
+        target_keys: Optional[list] = None,
     ):
         super().__init__()
         self.data_root = Path(data_root)
         self.img_size = img_size
         self.disp_size = disp_size
         self.norm_stats = norm_stats
+        self.input_transform = input_transform
+        self.target_keys = set(target_keys) if target_keys is not None else {"psi", "force", "disp"}
 
-        # ── Discover image files ─────────────────────────────────────────
+        # ── Discover image files ──────────────────────────────────────────
         img_dir = self.data_root / "images"
         if not img_dir.exists():
             raise FileNotFoundError(
@@ -135,8 +139,8 @@ class MechMNISTCahnHilliard(Dataset):
         if not self.image_files:
             raise FileNotFoundError(f"No image files found in {img_dir}")
 
-        # ── Load summary targets (Layout A) or set up per-file (Layout B)─
-        self._load_targets()
+        # ── Load summary targets (Layout A) or set up per-file (Layout B) ─
+        self._load_targets(load_disp="disp" in self.target_keys)
 
         # ── Apply index subsetting ───────────────────────────────────────
         if indices is not None:
@@ -157,7 +161,7 @@ class MechMNISTCahnHilliard(Dataset):
         self.n_samples = len(self.image_files)
         print(f"[Dataset] Loaded {self.n_samples} samples from {data_root}")
 
-    def _load_targets(self):
+    def _load_targets(self, load_disp: bool = True):
         """Load target data from summary files or per-sample files."""
         root = self.data_root
 
@@ -174,7 +178,13 @@ class MechMNISTCahnHilliard(Dataset):
             print("[Dataset] Using per-sample file layout")
             self.psi_data, self.force_data = self._load_per_sample_scalars()
 
-        # ── Displacement field (may be large — loaded lazily if needed) ──
+        # ── Displacement field (may be large — skip if not needed) ───────
+        if not load_disp:
+            self.disp_data = None
+            self.disp_layout = "none"
+            print("[Dataset] Displacement loading skipped (not in target_keys)")
+            return
+
         disp_x_path = self._find_file("summary_disp_x")
         disp_y_path = self._find_file("summary_disp_y")
 
@@ -281,48 +291,57 @@ class MechMNISTCahnHilliard(Dataset):
             img_tensor, size=(self.img_size, self.img_size), mode="nearest"
         ).squeeze(0)  # (1, H, W) — nearest-neighbor preserves binary values
 
+        # Apply model-specific input transform (augmentations, etc.)
+        if self.input_transform is not None:
+            img_tensor = self.input_transform(img_tensor)
+
+        out = {"image": img_tensor}
+
         # ── Scalar targets ───────────────────────────────────────────────
-        psi = self.psi_data[idx].astype(np.float32)
-        force = self.force_data[idx].astype(np.float32)
+        if "psi" in self.target_keys:
+            psi = self.psi_data[idx].astype(np.float32)
+            if self.norm_stats is not None:
+                psi = (psi - self.norm_stats.psi_mean) / self.norm_stats.psi_std
+            out["psi"] = torch.as_tensor(psi, dtype=torch.float32)
+
+        if "force" in self.target_keys:
+            force = self.force_data[idx].astype(np.float32)
+            if self.norm_stats is not None:
+                force = (force - self.norm_stats.force_mean) / self.norm_stats.force_std
+            out["force"] = torch.as_tensor(force, dtype=torch.float32)
 
         # ── Displacement field ───────────────────────────────────────────
-        if self.disp_data is not None:
-            disp = self.disp_data[idx]  # (2, H_orig, W_orig)
-            if disp.ndim == 3:
+        if "disp" in self.target_keys:
+            if self.disp_data is not None:
+                disp = self.disp_data[idx]  # (2, H_orig, W_orig)
+                if disp.ndim == 3:
+                    disp_tensor = torch.from_numpy(disp).unsqueeze(0)
+                    disp_tensor = F.interpolate(
+                        disp_tensor, size=(self.disp_size, self.disp_size),
+                        mode="bilinear", align_corners=False,
+                    ).squeeze(0)
+                else:
+                    disp_tensor = torch.from_numpy(disp)
+            else:
+                disp = self._load_single_disp(idx)
                 disp_tensor = torch.from_numpy(disp).unsqueeze(0)
                 disp_tensor = F.interpolate(
                     disp_tensor, size=(self.disp_size, self.disp_size),
                     mode="bilinear", align_corners=False,
                 ).squeeze(0)
-            else:
-                disp_tensor = torch.from_numpy(disp)
-        else:
-            disp = self._load_single_disp(idx)
-            disp_tensor = torch.from_numpy(disp).unsqueeze(0)
-            disp_tensor = F.interpolate(
-                disp_tensor, size=(self.disp_size, self.disp_size),
-                mode="bilinear", align_corners=False,
-            ).squeeze(0)
 
-        # ── Normalize targets ────────────────────────────────────────────
-        if self.norm_stats is not None:
-            ns = self.norm_stats
-            psi = (psi - ns.psi_mean) / ns.psi_std
-            force = (force - ns.force_mean) / ns.force_std
-            disp_mean = torch.as_tensor(ns.disp_mean, dtype=torch.float32).view(-1, 1, 1)
-            disp_std = torch.as_tensor(ns.disp_std, dtype=torch.float32).view(-1, 1, 1)
-            disp_tensor = (disp_tensor - disp_mean) / disp_std
+            if self.norm_stats is not None:
+                disp_mean = torch.as_tensor(
+                    self.norm_stats.disp_mean, dtype=torch.float32
+                ).view(-1, 1, 1)
+                disp_std = torch.as_tensor(
+                    self.norm_stats.disp_std, dtype=torch.float32
+                ).view(-1, 1, 1)
+                disp_tensor = (disp_tensor - disp_mean) / disp_std
 
-        psi_tensor = torch.as_tensor(psi, dtype=torch.float32)
-        force_tensor = torch.as_tensor(force, dtype=torch.float32)
-        disp_tensor = disp_tensor.float()  # ensure float32
+            out["disp"] = disp_tensor.float()
 
-        return {
-            "image": img_tensor,        # (1, 256, 256)
-            "psi": psi_tensor,           # (7,)
-            "force": force_tensor,       # (28,)
-            "disp": disp_tensor,         # (2, 256, 256)
-        }
+        return out
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -338,15 +357,27 @@ def create_dataloaders(
     num_workers: int = 4,
     max_samples: int = None,
     seed: int = 42,
+    model=None,
 ) -> Tuple[DataLoader, DataLoader, DataLoader, NormStats]:
     """
     Create train/val/test dataloaders with normalization.
+
+    Parameters
+    ----------
+    model : MechMNISTModel, optional
+        If provided, model.get_target_keys() and model.get_input_transform()
+        are used to configure the datasets.
 
     Returns
     -------
     train_loader, val_loader, test_loader, norm_stats
     """
-    # Load full dataset (without normalization) to compute stats
+    target_keys = model.get_target_keys() if model is not None else None
+    train_tf = model.get_input_transform(train=True) if model is not None else None
+    eval_tf = model.get_input_transform(train=False) if model is not None else None
+
+    # Load full dataset (without normalization) to compute stats.
+    # Always load disp here so we can compute its normalization stats.
     full_ds = MechMNISTCahnHilliard(
         data_root, img_size=img_size, max_samples=max_samples
     )
@@ -375,15 +406,18 @@ def create_dataloaders(
         else np.zeros(1),
     )
 
-    # Create split datasets with normalization
+    # Create split datasets with normalization, model transforms, and target selection
     train_ds = MechMNISTCahnHilliard(
-        data_root, img_size, norm_stats=norm, indices=train_idx, max_samples=max_samples
+        data_root, img_size, norm_stats=norm, indices=train_idx,
+        max_samples=max_samples, input_transform=train_tf, target_keys=target_keys,
     )
     val_ds = MechMNISTCahnHilliard(
-        data_root, img_size, norm_stats=norm, indices=val_idx
+        data_root, img_size, norm_stats=norm, indices=val_idx,
+        input_transform=eval_tf, target_keys=target_keys,
     )
     test_ds = MechMNISTCahnHilliard(
-        data_root, img_size, norm_stats=norm, indices=test_idx
+        data_root, img_size, norm_stats=norm, indices=test_idx,
+        input_transform=eval_tf, target_keys=target_keys,
     )
 
     loader_kwargs = dict(
