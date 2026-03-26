@@ -37,8 +37,11 @@ class Config:
     epochs: int = 100
     lr: float = 1e-3
     weight_decay: float = 1e-4
-    scheduler: str = "cosine"            # "cosine" | "step" | "plateau"
-    warmup_epochs: int = 5
+    optimizer: str = "adamw"             # "adamw" | "adam"
+    scheduler: str = "cosine"            # "cosine" | "plateau"
+    warmup_epochs: int = 5               # only used when scheduler="cosine"
+    lr_reduce_factor: float = 0.5        # only used when scheduler="plateau"
+    lr_reduce_patience: int = 3          # only used when scheduler="plateau"
 
     # Multi-task loss: learnable uncertainty weights (Kendall et al.)
     use_learned_loss_weights: bool = False

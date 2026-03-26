@@ -26,10 +26,12 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.amp import autocast, GradScaler
-from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
+from torch.optim.lr_scheduler import (
+    CosineAnnealingLR, LinearLR, ReduceLROnPlateau, SequentialLR
+)
 
 from models import get_model, MultiTaskLoss, count_parameters, default_config, load_config
-from dataset import create_dataloaders, NormStats
+from dataset import create_dataloaders
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -50,6 +52,34 @@ def compute_metrics(pred: torch.Tensor, target: torch.Tensor) -> dict:
         mae = F.l1_loss(pred, target).item()
         r2 = compute_r2(pred, target)
     return {"mse": mse, "mae": mae, "r2": r2}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Optimizer and scheduler builders
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _build_optimizer(cfg, params):
+    name = cfg.optimizer.lower()
+    if name == "adam":
+        return torch.optim.Adam(params, lr=cfg.lr, weight_decay=cfg.weight_decay)
+    if name == "adamw":
+        return torch.optim.AdamW(params, lr=cfg.lr, weight_decay=cfg.weight_decay)
+    raise ValueError(f"Unknown optimizer '{cfg.optimizer}'. Choose 'adam' or 'adamw'.")
+
+
+def _build_scheduler(cfg, optimizer):
+    name = cfg.scheduler.lower()
+    if name == "cosine":
+        warmup = LinearLR(optimizer, start_factor=0.1, total_iters=cfg.warmup_epochs)
+        cosine = CosineAnnealingLR(
+            optimizer, T_max=max(1, cfg.epochs - cfg.warmup_epochs), eta_min=1e-6
+        )
+        return SequentialLR(optimizer, [warmup, cosine], milestones=[cfg.warmup_epochs])
+    if name == "plateau":
+        return ReduceLROnPlateau(
+            optimizer, factor=cfg.lr_reduce_factor, patience=cfg.lr_reduce_patience
+        )
+    raise ValueError(f"Unknown scheduler '{cfg.scheduler}'. Choose 'cosine' or 'plateau'.")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -74,20 +104,10 @@ class Trainer:
 
         # ── Optimizer (include loss params if learned) ───────────────────
         params = list(self.model.parameters()) + list(self.criterion.parameters())
-        self.optimizer = torch.optim.AdamW(
-            params, lr=cfg.lr, weight_decay=cfg.weight_decay
-        )
+        self.optimizer = _build_optimizer(cfg, params)
 
-        # ── Scheduler: linear warmup → cosine annealing ──────────────────
-        warmup = LinearLR(
-            self.optimizer, start_factor=0.1, total_iters=cfg.warmup_epochs
-        )
-        cosine = CosineAnnealingLR(
-            self.optimizer, T_max=max(1, cfg.epochs - cfg.warmup_epochs), eta_min=1e-6
-        )
-        self.scheduler = SequentialLR(
-            self.optimizer, [warmup, cosine], milestones=[cfg.warmup_epochs]
-        )
+        # ── Scheduler ────────────────────────────────────────────────────
+        self.scheduler = _build_scheduler(cfg, self.optimizer)
 
         # ── AMP (only effective on CUDA) ─────────────────────────────────
         self.device_type = "cuda" if device.type == "cuda" else "cpu"
@@ -235,7 +255,10 @@ class Trainer:
             val_loss = val_result["total"]
 
             # ── Scheduler step ───────────────────────────────────────────
-            self.scheduler.step()
+            if isinstance(self.scheduler, ReduceLROnPlateau):
+                self.scheduler.step(val_loss)
+            else:
+                self.scheduler.step()
 
             # ── Logging ──────────────────────────────────────────────────
             elapsed = time.time() - t0
@@ -337,7 +360,7 @@ class Trainer:
 # ═══════════════════════════════════════════════════════════════════════════
 
 @torch.no_grad()
-def evaluate(trainer: Trainer, test_loader, norm_stats: NormStats):
+def evaluate(trainer: Trainer, test_loader):
     """Full evaluation on test set with denormalized metrics."""
     print(f"\n{'='*70}")
     print("Evaluating on test set")
@@ -453,7 +476,7 @@ def main():
     if args.evaluate:
         ckpt_path = os.path.join(cfg.checkpoint_dir, args.checkpoint)
         trainer.load_checkpoint(ckpt_path)
-        evaluate(trainer, test_loader, norm_stats)
+        evaluate(trainer, test_loader)
     else:
         start_epoch = 1
         if args.resume:
@@ -462,7 +485,7 @@ def main():
         trainer.fit(train_loader, val_loader, start_epoch=start_epoch)
         # Final test evaluation
         trainer.load_checkpoint(os.path.join(cfg.checkpoint_dir, "best_model.pt"))
-        evaluate(trainer, test_loader, norm_stats)
+        evaluate(trainer, test_loader)
 
 
 if __name__ == "__main__":
