@@ -22,6 +22,7 @@ Requires: Python >= 3.8, requests, numpy
 import argparse
 import math
 import os
+import re
 import shutil
 import sys
 import time
@@ -342,6 +343,61 @@ def _consolidate_scalar(root: Path, subfolder: str, out_name: str):
     print(f"  → {out_name} + .npy: {arr.shape}")
 
 
+def _consolidate_images(root: Path):
+    """
+    Build summary_images_NxN.npy for each available image resolution.
+
+    64×64  — images_64x64/ contains 3 per-case summary files, each shaped
+              (N_case, 4096). Concatenate and reshape to (N, 64, 64).
+
+    400×400 — images/ contains one .txt file per sample (400×400 values).
+              Load numerically sorted, stack in chunks, save as (N, 400, 400).
+              This is slow on first run but makes subsequent loads fast.
+    """
+    import numpy as np
+
+    # ── 64×64 ────────────────────────────────────────────────────────
+    img64_dir = root / "images_64x64"
+    out64 = root / "summary_images_64x64.npy"
+    if img64_dir.exists() and not out64.exists():
+        case_files = sorted(img64_dir.glob("*.txt"))
+        if case_files:
+            print(f"  Building summary_images_64x64.npy from {len(case_files)} case files...")
+            parts = [np.loadtxt(str(f), dtype=np.float32) for f in case_files]
+            arr = np.concatenate(parts, axis=0).reshape(-1, 64, 64)
+            np.save(str(out64), arr)
+            print(f"  → summary_images_64x64.npy: {arr.shape}")
+    elif out64.exists():
+        print("  summary_images_64x64.npy already exists, skipping.")
+
+    # ── 400×400 ──────────────────────────────────────────────────────
+    img_dir = root / "images"
+    out400 = root / "summary_images_400x400.npy"
+    if img_dir.exists() and not out400.exists():
+        img_files = sorted(
+            img_dir.glob("*.txt"),
+            key=lambda p: int(re.search(r"\d+", p.stem).group()),
+        )
+        n = len(img_files)
+        if n > 0:
+            print(f"  Building summary_images_400x400.npy from {n:,} files (this takes a while)...")
+            chunk_size = 2000
+            chunks = []
+            for start in range(0, n, chunk_size):
+                end = min(start + chunk_size, n)
+                chunk = np.stack([
+                    np.loadtxt(str(img_files[i]), dtype=np.float32)
+                    for i in range(start, end)
+                ])
+                chunks.append(chunk)
+                print(f"    {end:,}/{n:,}")
+            arr = np.concatenate(chunks, axis=0)   # (N, 400, 400)
+            np.save(str(out400), arr)
+            print(f"  → summary_images_400x400.npy: {arr.shape}")
+    elif out400.exists():
+        print("  summary_images_400x400.npy already exists, skipping.")
+
+
 def consolidate(data_dir: str, skip_disp: bool):
     print(f"\n[3/4] Building consolidated summary files\n")
 
@@ -353,6 +409,9 @@ def consolidate(data_dir: str, skip_disp: bool):
         return
 
     root = Path(data_dir)
+
+    # ── Input images ─────────────────────────────────────────────────
+    _consolidate_images(root)
 
     # ── Strain energy ────────────────────────────────────────────────
     _consolidate_scalar(root, "psi", "summary_psi.txt")
@@ -434,10 +493,17 @@ def verify(data_dir: str, skip_disp: bool):
     n = len(list(img_dir.glob("*.txt"))) if img_dir.exists() else 0
     rows.append(("✓" if n > 0 else "✗", "Input images (400×400)", f"{n:,} files"))
 
-    img64_dir = root / "images_64x64"
-    n64 = len(list(img64_dir.glob("*.txt"))) if img64_dir.exists() else 0
-    if n64 > 0:
-        rows.append(("✓", "Downsampled (64×64)", f"{n64:,} files"))
+    for res, label in [("400x400", "Image summary (400×400)"), ("64x64", "Image summary (64×64)")]:
+        p = root / f"summary_images_{res}.npy"
+        if p.exists():
+            try:
+                import numpy as np
+                shape = np.load(str(p), mmap_mode="r").shape
+                rows.append(("✓", label, str(shape)))
+            except Exception:
+                rows.append(("✓", label, "file exists"))
+        else:
+            rows.append(("–", label, "not built yet"))
 
     for label, fname in [("Strain energy", "summary_psi.txt"),
                          ("Reaction force", "summary_rxnforce.txt")]:

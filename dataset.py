@@ -123,42 +123,72 @@ class MechMNISTCahnHilliard(Dataset):
         self.input_transform = input_transform
         self.target_keys = set(target_keys) if target_keys is not None else {"psi", "force", "disp"}
 
-        # ── Discover image files ──────────────────────────────────────────
-        img_dir = self.data_root / "images"
-        if not img_dir.exists():
+        # ── Load images ───────────────────────────────────────────────────
+        # Priority:
+        #   1. Exact-resolution summary (e.g. summary_images_64x64.npy)  → load, no resize
+        #   2. 400×400 summary (summary_images_400x400.npy)              → load, resize in __getitem__
+        #   3. Per-file fallback from images/                            → load, resize in __getitem__
+        exact_npy  = self.data_root / f"summary_images_{img_size}x{img_size}.npy"
+        source_npy = self.data_root / "summary_images_400x400.npy"
+        default_dir = self.data_root / "images"
+
+        if exact_npy.exists():
+            print(f"[Dataset] Loading images from {exact_npy.name} (no resize)")
+            self._image_data = np.load(str(exact_npy), mmap_mode="r")   # (N, img_size, img_size)
+            self._image_native_size = img_size   # already at target resolution
+            self.image_files = None
+        elif source_npy.exists():
+            print(f"[Dataset] Loading images from {source_npy.name} "
+                  f"(will resize 400→{img_size})")
+            self._image_data = np.load(str(source_npy), mmap_mode="r")  # (N, 400, 400)
+            self._image_native_size = 400
+            self.image_files = None
+        elif default_dir.exists():
+            print(f"[Dataset] No image summary found — loading per-file from images/ "
+                  f"(run setup_data.py to build image summaries)")
+            self._image_data = None
+            self._image_native_size = None
+            self.image_files = sorted(glob.glob(str(default_dir / "*.txt")))
+            if not self.image_files:
+                self.image_files = sorted(glob.glob(str(default_dir / "*.npy")))
+            if not self.image_files:
+                raise FileNotFoundError(f"No image files found in {default_dir}")
+        else:
             raise FileNotFoundError(
-                f"Image directory not found: {img_dir}\n"
-                "Expected structure: data_root/images/Image0001.txt ..."
+                f"No image source found under {self.data_root}. "
+                f"Run setup_data.py first."
             )
-
-        self.image_files = sorted(glob.glob(str(img_dir / "*.txt")))
-        if not self.image_files:
-            # Try .npy format
-            self.image_files = sorted(glob.glob(str(img_dir / "*.npy")))
-
-        if not self.image_files:
-            raise FileNotFoundError(f"No image files found in {img_dir}")
 
         # ── Load summary targets (Layout A) or set up per-file (Layout B) ─
         self._load_targets(load_disp="disp" in self.target_keys)
 
         # ── Apply index subsetting ───────────────────────────────────────
+        n_total = len(self._image_data) if self._image_data is not None else len(self.image_files)
+
         if indices is not None:
-            self.image_files = [self.image_files[i] for i in indices]
+            if self._image_data is not None:
+                self._image_data = self._image_data[indices]
+            else:
+                self.image_files = [self.image_files[i] for i in indices]
             self.psi_data = self.psi_data[indices]
             self.force_data = self.force_data[indices]
             if self.disp_data is not None:
                 self.disp_data = self.disp_data[indices]
+            n_total = len(indices)
 
         if max_samples is not None:
-            n = min(max_samples, len(self.image_files))
-            self.image_files = self.image_files[:n]
+            n = min(max_samples, n_total)
+            if self._image_data is not None:
+                self._image_data = self._image_data[:n]
+            else:
+                self.image_files = self.image_files[:n]
             self.psi_data = self.psi_data[:n]
             self.force_data = self.force_data[:n]
             if self.disp_data is not None:
                 self.disp_data = self.disp_data[:n]
+            n_total = n
 
-        self.n_samples = len(self.image_files)
+        self.n_samples = n_total
         print(f"[Dataset] Loaded {self.n_samples} samples from {data_root}")
 
     def _load_targets(self, load_disp: bool = True):
@@ -281,15 +311,21 @@ class MechMNISTCahnHilliard(Dataset):
 
     def __getitem__(self, idx: int) -> dict:
         # ── Image ────────────────────────────────────────────────────────
-        img = self._load_image(self.image_files[idx])
-        if img.ndim == 2:
-            img = img[np.newaxis, :, :]  # (1, 400, 400)
-
-        # Resize to target size
-        img_tensor = torch.from_numpy(img).unsqueeze(0)  # (1, 1, 400, 400)
-        img_tensor = F.interpolate(
-            img_tensor, size=(self.img_size, self.img_size), mode="nearest"
-        ).squeeze(0)  # (1, H, W) — nearest-neighbor preserves binary values
+        if self._image_data is not None:
+            img_tensor = torch.from_numpy(np.array(self._image_data[idx])).unsqueeze(0)  # (1, H, W)
+            if self._image_native_size != self.img_size:
+                img_tensor = F.interpolate(
+                    img_tensor.unsqueeze(0), size=(self.img_size, self.img_size), mode="nearest"
+                ).squeeze(0)                         # (1, img_size, img_size)
+        else:
+            # Per-file fallback: load 400×400 and resize to img_size
+            img = self._load_image(self.image_files[idx])
+            if img.ndim == 2:
+                img = img[np.newaxis, :, :]          # (1, 400, 400)
+            img_tensor = torch.from_numpy(img).unsqueeze(0)
+            img_tensor = F.interpolate(
+                img_tensor, size=(self.img_size, self.img_size), mode="nearest"
+            ).squeeze(0)                             # (1, img_size, img_size)
 
         # Apply model-specific input transform (augmentations, etc.)
         if self.input_transform is not None:
