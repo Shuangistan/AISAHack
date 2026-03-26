@@ -46,8 +46,8 @@ class Config:
     # Multi-task loss: learnable uncertainty weights (Kendall et al.)
     use_learned_loss_weights: bool = False
     lambda_psi: float = 1.0
-    lambda_force: float = 2.0           # upweight harder task
-    lambda_disp: float = 0.1            # lower because field loss is much larger
+    lambda_force: float = 1.0
+    lambda_disp: float = 1.0
 
     # ── Mixed precision ──────────────────────────────────────────────────
     use_amp: bool = True                 # automatic mixed precision
@@ -59,7 +59,7 @@ class Config:
 
     # ── Logging ──────────────────────────────────────────────────────────
     log_dir: str = "./logs"
-    print_every: int = 50                # print metrics every N batches
+    print_every: int = 1000              # print metrics every N batches
 
 
 # Convenience instance
