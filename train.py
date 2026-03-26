@@ -258,7 +258,7 @@ class Trainer:
                 f"Val {val_loss:.4f} │ "
                 f"ψ_R²={val_result['metrics']['psi']['r2']:.4f} "
                 f"F_R²={val_result['metrics']['force']['r2']:.4f} "
-                f"u_R²={val_result['metrics']['disp']['r2']:.4f} │ "
+                f"u_MSE={val_result['metrics']['disp']['mse']:.4f} │ "
                 f"lr={lr:.2e}{weight_str} │ "
                 f"{elapsed:.1f}s"
             )
