@@ -135,6 +135,14 @@ class Trainer:
                     fixed_weights=(self.cfg.lambda_psi, self.cfg.lambda_force, self.cfg.lambda_disp),
                 )
 
+            # Skip batch if forward pass produced NaN/inf (GradScaler only
+            # catches inf in gradients, not NaN — so we guard here instead)
+            if not torch.isfinite(total_loss):
+                print(f"  [Warning] Non-finite loss at batch {batch_idx}, skipping")
+                self.optimizer.zero_grad(set_to_none=True)
+                continue
+
+            scale_before = self.scaler.get_scale()
             self.scaler.scale(total_loss).backward()
             # Gradient clipping for stability
             self.scaler.unscale_(self.optimizer)
@@ -142,6 +150,11 @@ class Trainer:
             nn.utils.clip_grad_norm_(all_params, max_norm=1.0)
             self.scaler.step(self.optimizer)
             self.scaler.update()
+
+            # If scaler reduced its scale, gradients overflowed — step was skipped
+            if self.scaler.get_scale() < scale_before:
+                print(f"  [Warning] Gradient overflow at batch {batch_idx}, step skipped")
+                continue
 
             epoch_losses["total"] += total_loss.item()
             epoch_losses["psi"] += loss_psi.item()
