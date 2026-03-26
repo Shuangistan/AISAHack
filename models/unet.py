@@ -9,9 +9,31 @@ Scalar head: GAP → MLP → 35 outputs (7 strain energy + 28 reaction force)
 Decoder:  5 levels of up-conv + skip-concat + double-conv → 2-channel displacement
 """
 
+from dataclasses import dataclass, field
+from typing import List
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+from config import Config
+from models.base import MechMNISTModel
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Model-specific configuration
+# ═══════════════════════════════════════════════════════════════════════════
+
+@dataclass
+class UNetConfig(Config):
+    """Configuration for UNetMultiRegression. Extends shared Config."""
+    model_name: str = "unet"
+    in_channels: int = 1                 # binary image input
+    encoder_channels: List[int] = field(
+        default_factory=lambda: [32, 64, 128, 256, 512]
+    )
+    use_batchnorm: bool = True
+    dropout: float = 0.1
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -107,14 +129,14 @@ class ScalarHead(nn.Module):
 # Full model
 # ═══════════════════════════════════════════════════════════════════════════
 
-class UNetMultiRegression(nn.Module):
+class UNetMultiRegression(MechMNISTModel):
     """
     U-Net with auxiliary scalar heads for Mechanical MNIST CH.
 
     Inputs:
         x: (B, 1, H, W) binary Cahn-Hilliard image
 
-    Outputs:
+    Outputs (dict):
         psi:   (B, 7)           strain energy at each displacement level
         force: (B, 28)          reaction force at 4 boundaries × 7 levels
         disp:  (B, 2, H, W)    full-field displacement (u_x, u_y)
@@ -157,7 +179,19 @@ class UNetMultiRegression(nn.Module):
         # ── Output projection ────────────────────────────────────────────
         self.out_conv = nn.Conv2d(ec[0], disp_channels, kernel_size=1)
 
-    def forward(self, x: torch.Tensor):
+    @classmethod
+    def from_config(cls, config) -> "UNetMultiRegression":
+        return cls(
+            in_channels=config.in_channels,
+            encoder_channels=config.encoder_channels,
+            n_psi=config.n_psi,
+            n_force=config.n_force,
+            disp_channels=config.disp_channels,
+            use_bn=config.use_batchnorm,
+            dropout=config.dropout,
+        )
+
+    def forward(self, x: torch.Tensor) -> dict:
         # Encoder path (save skip connections)
         s1, x = self.enc1(x)     # s1: (B, 32, H, W)
         s2, x = self.enc2(x)     # s2: (B, 64, H/2, W/2)
@@ -179,7 +213,7 @@ class UNetMultiRegression(nn.Module):
         # Displacement field
         disp = self.out_conv(x)  # (B, 2, H, W)
 
-        return psi, force, disp
+        return {"psi": psi, "force": force, "disp": disp}
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -240,19 +274,19 @@ if __name__ == "__main__":
     # Quick sanity check
     model = UNetMultiRegression()
     x = torch.randn(2, 1, 256, 256)
-    psi, force, disp = model(x)
+    out = model(x)
 
     print(f"Model parameters: {count_parameters(model):,}")
     print(f"Input shape:      {x.shape}")
-    print(f"Strain energy:    {psi.shape}")      # (2, 7)
-    print(f"Reaction force:   {force.shape}")     # (2, 28)
-    print(f"Displacement:     {disp.shape}")      # (2, 2, 256, 256)
+    print(f"Strain energy:    {out['psi'].shape}")      # (2, 7)
+    print(f"Reaction force:   {out['force'].shape}")     # (2, 28)
+    print(f"Displacement:     {out['disp'].shape}")      # (2, 2, 256, 256)
 
     # Test loss
     criterion = MultiTaskLoss(n_tasks=3, use_learned=True)
-    l1 = F.mse_loss(psi, torch.randn_like(psi))
-    l2 = F.mse_loss(force, torch.randn_like(force))
-    l3 = F.mse_loss(disp, torch.randn_like(disp))
+    l1 = F.mse_loss(out["psi"], torch.randn_like(out["psi"]))
+    l2 = F.mse_loss(out["force"], torch.randn_like(out["force"]))
+    l3 = F.mse_loss(out["disp"], torch.randn_like(out["disp"]))
     total, weights = criterion(l1, l2, l3)
     print(f"\nTotal loss: {total.item():.4f}")
     print(f"Task weights: {weights.cpu().numpy()}")

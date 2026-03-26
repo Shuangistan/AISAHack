@@ -4,9 +4,8 @@ Adjust these parameters based on your GPU memory and dataset location.
 """
 import dataclasses
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import List
 
 
 @dataclass
@@ -32,14 +31,6 @@ class Config:
     n_force: int = 28                    # 4 boundaries × 7 levels
     n_scalar_total: int = 35             # n_psi + n_force
     disp_channels: int = 2              # (u_x, u_y)
-
-    # ── Model ────────────────────────────────────────────────────────────
-    in_channels: int = 1                 # binary image
-    encoder_channels: List[int] = field(
-        default_factory=lambda: [32, 64, 128, 256, 512]
-    )
-    use_batchnorm: bool = True
-    dropout: float = 0.1
 
     # ── Training ─────────────────────────────────────────────────────────
     batch_size: int = 8                  # safe for RTX 3090/4090 at 256×256

@@ -15,23 +15,13 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from config import Config
-from model import UNetMultiRegression
+from models import get_model, default_config, load_config
 from dataset import MechMNISTCahnHilliard, NormStats
 
 
-def load_model(checkpoint_path: str, cfg: Config, device: torch.device):
+def load_model(checkpoint_path: str, cfg, device: torch.device):
     """Load a trained model from checkpoint."""
-    model = UNetMultiRegression(
-        in_channels=cfg.in_channels,
-        encoder_channels=cfg.encoder_channels,
-        n_psi=cfg.n_psi,
-        n_force=cfg.n_force,
-        disp_channels=cfg.disp_channels,
-        use_bn=cfg.use_batchnorm,
-        dropout=0.0,  # no dropout at inference
-    ).to(device)
-
+    model = get_model(cfg).to(device)
     ckpt = torch.load(checkpoint_path, map_location=device)
     model.load_state_dict(ckpt["model_state_dict"])
     model.eval()
@@ -55,8 +45,8 @@ def denormalize_disp(disp: np.ndarray, norm: NormStats) -> np.ndarray:
 def predict_single(model, image_tensor, device):
     """Run inference on a single image."""
     x = image_tensor.unsqueeze(0).to(device)
-    psi, force, disp = model(x)
-    return psi.cpu().numpy()[0], force.cpu().numpy()[0], disp.cpu().numpy()[0]
+    out = model(x)
+    return out["psi"].cpu().numpy()[0], out["force"].cpu().numpy()[0], out["disp"].cpu().numpy()[0]
 
 
 def plot_sample_comparison(
@@ -188,9 +178,13 @@ def plot_training_history(history_path: str, save_path: str = None):
 
 def main():
     parser = argparse.ArgumentParser(description="Visualize model predictions")
-    parser.add_argument("--checkpoint", type=str, default="checkpoints/best_model.pt")
+    parser.add_argument("--run_dir", type=str, default=None,
+                        help="Run directory (e.g. experiments/runs/unet_20260326_120000). "
+                             "If provided, config.json, best_model.pt, and norm_stats.npz "
+                             "are loaded from there automatically.")
+    parser.add_argument("--checkpoint", type=str, default="best_model.pt")
     parser.add_argument("--data_root", type=str, default="./data")
-    parser.add_argument("--norm_path", type=str, default="checkpoints/norm_stats.npz")
+    parser.add_argument("--norm_path", type=str, default=None)
     parser.add_argument("--n_samples", type=int, default=5)
     parser.add_argument("--out_dir", type=str, default="./figures")
     parser.add_argument("--history", type=str, default=None,
@@ -199,11 +193,24 @@ def main():
 
     os.makedirs(args.out_dir, exist_ok=True)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    cfg = Config()
+
+    # Resolve paths — run_dir is the convenient single-argument form
+    if args.run_dir:
+        run_dir = args.run_dir
+        config_path = os.path.join(run_dir, "config.json")
+        cfg = load_config(config_path) if os.path.exists(config_path) else default_config()
+        checkpoint_path = os.path.join(run_dir, args.checkpoint)
+        norm_path = args.norm_path or os.path.join(run_dir, "norm_stats.npz")
+        if args.history is None and os.path.exists(os.path.join(run_dir, "training_history.json")):
+            args.history = os.path.join(run_dir, "training_history.json")
+    else:
+        cfg = default_config()
+        checkpoint_path = args.checkpoint
+        norm_path = args.norm_path or "checkpoints/norm_stats.npz"
 
     # Load model
-    model = load_model(args.checkpoint, cfg, device)
-    norm = NormStats().load(args.norm_path)
+    model = load_model(checkpoint_path, cfg, device)
+    norm = NormStats().load(norm_path)
 
     # Load a few test samples
     ds = MechMNISTCahnHilliard(

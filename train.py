@@ -18,6 +18,7 @@ import argparse
 import json
 import os
 import time
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -27,8 +28,7 @@ import torch.nn.functional as F
 from torch.amp import autocast, GradScaler
 from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
 
-from config import Config
-from model import UNetMultiRegression, MultiTaskLoss, count_parameters
+from models import get_model, MultiTaskLoss, count_parameters, default_config, load_config
 from dataset import create_dataloaders, NormStats
 
 
@@ -57,20 +57,13 @@ def compute_metrics(pred: torch.Tensor, target: torch.Tensor) -> dict:
 # ═══════════════════════════════════════════════════════════════════════════
 
 class Trainer:
-    def __init__(self, cfg: Config, device: torch.device):
+    def __init__(self, cfg, device: torch.device, model=None):
         self.cfg = cfg
         self.device = device
 
         # ── Model ────────────────────────────────────────────────────────
-        self.model = UNetMultiRegression(
-            in_channels=cfg.in_channels,
-            encoder_channels=cfg.encoder_channels,
-            n_psi=cfg.n_psi,
-            n_force=cfg.n_force,
-            disp_channels=cfg.disp_channels,
-            use_bn=cfg.use_batchnorm,
-            dropout=cfg.dropout,
-        ).to(device)
+        # Accept a pre-built model (already on device) or build from config
+        self.model = model if model is not None else get_model(cfg).to(device)
 
         print(f"[Model] Parameters: {count_parameters(self.model):,}")
 
@@ -124,7 +117,8 @@ class Trainer:
             self.optimizer.zero_grad(set_to_none=True)
 
             with autocast(self.device_type, enabled=self.use_amp):
-                psi_pred, force_pred, disp_pred = self.model(img)
+                out = self.model(img)
+                psi_pred, force_pred, disp_pred = out["psi"], out["force"], out["disp"]
 
                 loss_psi = F.mse_loss(psi_pred, psi_gt)
                 loss_force = F.mse_loss(force_pred, force_gt)
@@ -187,7 +181,8 @@ class Trainer:
             disp_gt = batch["disp"].to(self.device)
 
             with autocast(self.device_type, enabled=self.use_amp):
-                psi_pred, force_pred, disp_pred = self.model(img)
+                out = self.model(img)
+                psi_pred, force_pred, disp_pred = out["psi"], out["force"], out["disp"]
 
                 loss_psi = F.mse_loss(psi_pred, psi_gt)
                 loss_force = F.mse_loss(force_pred, force_gt)
@@ -224,7 +219,7 @@ class Trainer:
 
     def fit(self, train_loader, val_loader, start_epoch: int = 1):
         print(f"\n{'='*70}")
-        print(f"Training U-Net multi-regression ({self.cfg.epochs} epochs)")
+        print(f"Training {self.cfg.model_name} ({self.cfg.epochs} epochs)")
         if start_epoch > 1:
             print(f"Resuming from epoch {start_epoch}")
         print(f"{'='*70}\n")
@@ -364,25 +359,46 @@ def evaluate(trainer: Trainer, test_loader, norm_stats: NormStats):
 # ═══════════════════════════════════════════════════════════════════════════
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Train U-Net on Mechanical MNIST CH")
+    parser = argparse.ArgumentParser(description="Train models on Mechanical MNIST CH")
     parser.add_argument("--data_root", type=str, default="./data")
+    parser.add_argument("--model", type=str, default=None,
+                        help="Model name (key in MODEL_REGISTRY, e.g. 'unet')")
     parser.add_argument("--epochs", type=int, default=None)
     parser.add_argument("--batch_size", type=int, default=None)
     parser.add_argument("--lr", type=float, default=None)
     parser.add_argument("--img_size", type=int, default=None)
     parser.add_argument("--evaluate", action="store_true")
+    parser.add_argument("--run_dir", type=str, default=None,
+                        help="Explicit run directory (overrides auto-generated name). "
+                             "Required when --resume or --evaluate without a run_dir.")
     parser.add_argument("--checkpoint", type=str, default="best_model.pt")
     parser.add_argument("--max_samples", type=int, default=None,
                         help="Limit dataset size (for debugging)")
     parser.add_argument("--no_amp", action="store_true", help="Disable mixed precision")
     parser.add_argument("--resume", action="store_true",
-                        help="Resume training from --checkpoint")
+                        help="Resume training from --checkpoint in --run_dir")
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
-    cfg = Config()
+    model_name = args.model or "unet"
+
+    # ── Per-run output directory ─────────────────────────────────────────
+    if args.run_dir:
+        run_dir = Path(args.run_dir)
+        # When resuming/evaluating, reload config from the run (preserves
+        # model-specific fields stored in the correct Config subclass)
+        config_path = run_dir / "config.json"
+        if config_path.exists() and (args.resume or args.evaluate):
+            cfg = load_config(config_path)
+        else:
+            cfg = default_config(model_name)
+    else:
+        run_dir = Path("experiments/runs") / (
+            f"{model_name}_{datetime.now():%Y%m%d_%H%M%S}"
+        )
+        cfg = default_config(model_name)
 
     # Override config with CLI args
     cfg.data_root = args.data_root
@@ -397,12 +413,21 @@ def main():
     if args.no_amp:
         cfg.use_amp = False
 
+    cfg.checkpoint_dir = str(run_dir)
+    cfg.log_dir = str(run_dir)
+    run_dir.mkdir(parents=True, exist_ok=True)
+
     # Device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"[Device] {device}")
     if device.type == "cuda":
         print(f"  GPU: {torch.cuda.get_device_name(0)}")
         print(f"  Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
+
+    print(f"[Run] {run_dir}")
+
+    # Build model first so dataloaders can query its target_keys and transforms
+    model = get_model(cfg).to(device)
 
     # Data
     print(f"\n[Data] Loading from {cfg.data_root}")
@@ -414,16 +439,16 @@ def main():
         val_split=cfg.val_split,
         num_workers=cfg.num_workers,
         max_samples=args.max_samples,
+        model=model,
     )
 
-    # Save normalization stats for inference
-    norm_path = os.path.join(cfg.checkpoint_dir, "norm_stats.npz")
-    os.makedirs(cfg.checkpoint_dir, exist_ok=True)
-    norm_stats.save(norm_path)
-    print(f"[Norm] Stats saved to {norm_path}")
+    # Save config and normalization stats into the run directory
+    cfg.to_json(run_dir / "config.json")
+    norm_stats.save(str(run_dir / "norm_stats.npz"))
+    print(f"[Run] Config saved to {run_dir / 'config.json'}")
 
-    # Trainer
-    trainer = Trainer(cfg, device)
+    # Trainer (reuses the already-built model)
+    trainer = Trainer(cfg, device, model=model)
 
     if args.evaluate:
         ckpt_path = os.path.join(cfg.checkpoint_dir, args.checkpoint)
