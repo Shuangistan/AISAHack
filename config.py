@@ -50,7 +50,7 @@ class Config:
     lambda_disp: float = 1.0
 
     # ── Mixed precision ──────────────────────────────────────────────────
-    use_amp: bool = True                 # automatic mixed precision
+    use_amp: bool = False                 # automatic mixed precision
 
     # ── Checkpointing ────────────────────────────────────────────────────
     checkpoint_dir: str = "./checkpoints"
