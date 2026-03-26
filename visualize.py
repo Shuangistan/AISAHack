@@ -47,7 +47,8 @@ def denormalize_force(force: np.ndarray, norm: NormStats) -> np.ndarray:
 
 
 def denormalize_disp(disp: np.ndarray, norm: NormStats) -> np.ndarray:
-    return disp * norm.disp_std + norm.disp_mean
+    # disp: (2, H, W), disp_mean/std: (2,) — broadcast over spatial dims
+    return disp * norm.disp_std[:, None, None] + norm.disp_mean[:, None, None]
 
 
 @torch.no_grad()

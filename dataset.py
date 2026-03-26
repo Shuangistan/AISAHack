@@ -53,8 +53,12 @@ class NormStats:
         self.psi_std = psi.std(axis=0) + 1e-8
         self.force_mean = force.mean(axis=0)
         self.force_std = force.std(axis=0) + 1e-8
-        self.disp_mean = disp.mean()
-        self.disp_std = disp.std() + 1e-8
+        if disp.ndim == 4:  # (N, 2, H, W) — per-channel stats
+            self.disp_mean = disp.mean(axis=(0, 2, 3))   # (2,)
+            self.disp_std = disp.std(axis=(0, 2, 3)) + 1e-8
+        else:              # fallback when disp_data is None
+            self.disp_mean = np.zeros(2, dtype=np.float32)
+            self.disp_std = np.ones(2, dtype=np.float32)
         return self
 
     def save(self, path: str):
@@ -305,7 +309,9 @@ class MechMNISTCahnHilliard(Dataset):
             ns = self.norm_stats
             psi = (psi - ns.psi_mean) / ns.psi_std
             force = (force - ns.force_mean) / ns.force_std
-            disp_tensor = (disp_tensor - ns.disp_mean) / ns.disp_std
+            disp_mean = torch.as_tensor(ns.disp_mean, dtype=torch.float32).view(-1, 1, 1)
+            disp_std = torch.as_tensor(ns.disp_std, dtype=torch.float32).view(-1, 1, 1)
+            disp_tensor = (disp_tensor - disp_mean) / disp_std
 
         psi_tensor = torch.as_tensor(psi, dtype=torch.float32)
         force_tensor = torch.as_tensor(force, dtype=torch.float32)
