@@ -28,12 +28,33 @@ from models.base import MechMNISTModel
 class UNetConfig(Config):
     """Configuration for UNetMultiRegression. Extends shared Config."""
     model_name: str = "unet"
-    in_channels: int = 1                 # binary image input
+
+    # Architecture
+    in_channels: int = 1
     encoder_channels: List[int] = field(
         default_factory=lambda: [32, 64, 128, 256, 512]
     )
     use_batchnorm: bool = True
     dropout: float = 0.1
+
+    # Dataset
+    img_size: int = 256
+    batch_size: int = 8
+
+    # Training
+    epochs: int = 100
+    lr: float = 1e-3
+    weight_decay: float = 1e-4
+    optimizer: str = "adamw"
+    scheduler: str = "cosine"
+    warmup_epochs: int = 5
+    patience: int = 15
+
+    # Multi-task loss weights
+    use_learned_loss_weights: bool = False
+    lambda_psi: float = 1.0
+    lambda_force: float = 1.0
+    lambda_disp: float = 1.0
 
 
 # ═══════════════════════════════════════════════════════════════════════════

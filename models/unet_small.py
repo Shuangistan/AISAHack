@@ -23,14 +23,25 @@ class UNetSmallConfig(Config):
     in_channels: int = 1
     features: List[int] = field(default_factory=lambda: [32, 64, 128, 256])
 
-    # Dataset — small U-Net expects 64×64 inputs
+    # Dataset
     img_size: int = 64
     batch_size: int = 64
 
-    # Optimizer / scheduler tuned for the smaller model
-    optimizer: str = "adam"
+    # Training
+    epochs: int = 100
+    lr: float = 1e-3
     weight_decay: float = 1e-5
+    optimizer: str = "adam"
     scheduler: str = "plateau"
+    lr_reduce_factor: float = 0.5
+    lr_reduce_patience: int = 3
+    patience: int = 15
+
+    # Multi-task loss weights
+    use_learned_loss_weights: bool = False
+    lambda_psi: float = 1.0
+    lambda_force: float = 1.0
+    lambda_disp: float = 1.0
 
 
 class _ConvBlock(nn.Module):
