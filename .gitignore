@@ -2,9 +2,8 @@
 data/
 figures/
 
-# Checkpoints & logs (committed explicitly with -f when needed)
-checkpoints/
-logs/
+# Experiments (committed explicitly with -f when needed)
+experiments/
 
 # Python
 __pycache__/
