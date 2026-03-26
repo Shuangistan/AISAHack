@@ -239,7 +239,7 @@ class MechMNISTCahnHilliard(Dataset):
     def _find_file(self, prefix: str) -> Optional[str]:
         """Look for a summary file with various extensions."""
         root = self.data_root
-        for ext in [".txt", ".npy", ".csv", ".gz"]:
+        for ext in [ ".npy",".txt", ".csv", ".gz"]:
             p = root / f"{prefix}{ext}"
             if p.exists():
                 return str(p)
