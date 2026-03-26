@@ -1,3 +1,9 @@
+data/
+**/processed/*.npy
+!**/processed/norm_stats.npy
+**/eval_results/
+**/predictions/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
