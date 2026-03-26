@@ -12,13 +12,16 @@ import json
 
 from models.base import MechMNISTModel
 from models.unet import UNetConfig, UNetMultiRegression, MultiTaskLoss, count_parameters
+from models.unet_small import UNetSmallConfig, MultiTaskUNet
 
 MODEL_REGISTRY: dict[str, type[MechMNISTModel]] = {
     "unet": UNetMultiRegression,
+    "unet_small": MultiTaskUNet,
 }
 
 CONFIG_REGISTRY: dict[str, type] = {
     "unet": UNetConfig,
+    "unet_small": UNetSmallConfig,
 }
 
 
@@ -63,6 +66,8 @@ __all__ = [
     "MechMNISTModel",
     "UNetConfig",
     "UNetMultiRegression",
+    "UNetSmallConfig",
+    "MultiTaskUNet",
     "MultiTaskLoss",
     "count_parameters",
     "MODEL_REGISTRY",
