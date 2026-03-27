@@ -32,12 +32,7 @@ CONFIG_REGISTRY: dict[str, type] = {
 
 
 def get_model(config) -> MechMNISTModel:
-    """Instantiate the model specified by config.model_name."""
-    if config.model_name not in MODEL_REGISTRY:
-        raise ValueError(
-            f"Unknown model '{config.model_name}'. "
             f"Available: {sorted(MODEL_REGISTRY)}"
-        )
     return MODEL_REGISTRY[config.model_name].from_config(config)
 
 

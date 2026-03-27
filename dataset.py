@@ -108,7 +108,7 @@ class MechMNISTCahnHilliard(Dataset):
         self,
         data_root: str,
         img_size: int = 256,
-        disp_size: int = 256,
+        disp_size: Optional[int] = None,
         norm_stats: Optional[NormStats] = None,
         indices: Optional[list] = None,
         max_samples: Optional[int] = None,
@@ -118,7 +118,7 @@ class MechMNISTCahnHilliard(Dataset):
         super().__init__()
         self.data_root = Path(data_root)
         self.img_size = img_size
-        self.disp_size = disp_size
+        self.disp_size = disp_size if disp_size is not None else img_size
         self.norm_stats = norm_stats
         self.input_transform = input_transform
         self.target_keys = set(target_keys) if target_keys is not None else {"psi", "force", "disp"}
