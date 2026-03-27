@@ -14,17 +14,20 @@ from models.base import MechMNISTModel
 from models.unet import UNetConfig, UNetMultiRegression, MultiTaskLoss, count_parameters
 from models.unet_small import UNetSmallConfig, MultiTaskUNet
 from models.fno import FNOConfig, MultiTaskFNO
+from models.swin import SwinConfig, MultiTaskSwin
 
 MODEL_REGISTRY: dict[str, type[MechMNISTModel]] = {
     "unet": UNetMultiRegression,
     "unet_small": MultiTaskUNet,
     "fno": MultiTaskFNO,
+    "swin": MultiTaskSwin,
 }
 
 CONFIG_REGISTRY: dict[str, type] = {
     "unet": UNetConfig,
     "unet_small": UNetSmallConfig,
     "fno": FNOConfig,
+    "swin": SwinConfig,
 }
 
 
@@ -73,6 +76,8 @@ __all__ = [
     "MultiTaskUNet",
     "FNOConfig",
     "MultiTaskFNO",
+    "SwinConfig",
+    "MultiTaskSwin",
     "MultiTaskLoss",
     "count_parameters",
     "MODEL_REGISTRY",
