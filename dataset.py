@@ -415,7 +415,7 @@ def create_dataloaders(
     # Load full dataset (without normalization) to compute stats.
     # Always load disp here so we can compute its normalization stats.
     full_ds = MechMNISTCahnHilliard(
-        data_root, img_size=img_size, max_samples=max_samples
+        data_root, img_size=img_size, disp_size=img_size, max_samples=max_samples
     )
 
     n = len(full_ds)
@@ -444,15 +444,15 @@ def create_dataloaders(
 
     # Create split datasets with normalization, model transforms, and target selection
     train_ds = MechMNISTCahnHilliard(
-        data_root, img_size, norm_stats=norm, indices=train_idx,
+        data_root, img_size, disp_size=img_size, norm_stats=norm, indices=train_idx,
         max_samples=max_samples, input_transform=train_tf, target_keys=target_keys,
     )
     val_ds = MechMNISTCahnHilliard(
-        data_root, img_size, norm_stats=norm, indices=val_idx,
+        data_root, img_size, disp_size=img_size, norm_stats=norm, indices=val_idx,
         input_transform=eval_tf, target_keys=target_keys,
     )
     test_ds = MechMNISTCahnHilliard(
-        data_root, img_size, norm_stats=norm, indices=test_idx,
+        data_root, img_size, disp_size=img_size, norm_stats=norm, indices=test_idx,
         input_transform=eval_tf, target_keys=target_keys,
     )
 
