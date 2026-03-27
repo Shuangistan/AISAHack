@@ -1,0 +1,32 @@
+# ============================================================================
+# requirements-fea.txt
+# ============================================================================
+# Dependencies for FEA pipeline (Gmsh mesh generation)
+# Install these alongside the main requirements to enable FEA functionality
+#
+# Install with: pip install -r requirements-fea.txt
+#
+# Note: On Linux (Ubuntu), also install FEniCS via apt:
+#   sudo add-apt-repository ppa:fenics-packages/fenics
+#   sudo apt-get update
+#   sudo apt-get install fenics python3-ufl
+#
+# Use this if:
+#   ✅ You want to run the FEA pipeline (NumpyImageToGmsh.py)
+#   ✅ You need mesh generation and simulation
+# ============================================================================
+
+# Mesh generation (exact versions for compatibility)
+pygmsh==6.1.0
+meshio==5.3.4
+gmsh>=4.10.0,<5.0.0
+
+# HDF5 support (for FEniCS output)
+h5py>=3.9.0,<4.0.0
+
+# Image preprocessing (for converting images to mesh)
+opencv-python-headless>=4.8.0,<5.0.0
+numpy>=1.24.0,<2.0.0
+
+# Utilities
+rich>=13.5.0,<14.0.0
