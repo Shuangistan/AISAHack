@@ -123,7 +123,7 @@ class MultiTaskFNO(MechMNISTModel):
             nn.Conv2d(128, 2, 1),
         )
 
-        self.psi_head = nn.Sequential(
+        self.se_head = nn.Sequential(
             nn.AdaptiveAvgPool2d(1),
             nn.Flatten(),
             nn.Linear(width, 128),
@@ -131,7 +131,7 @@ class MultiTaskFNO(MechMNISTModel):
             nn.Linear(128, 7),
         )
 
-        self.force_head = nn.Sequential(
+        self.rf_head = nn.Sequential(
             nn.AdaptiveAvgPool2d(1),
             nn.Flatten(),
             nn.Linear(width, 128),
@@ -153,8 +153,8 @@ class MultiTaskFNO(MechMNISTModel):
         for layer in self.fno_layers:
             x = layer(x)
 
-        psi = self.psi_head(x)
-        force = self.force_head(x)
+        psi = self.se_head(x)
+        force = self.rf_head(x)
         disp = self.disp_head(x)
 
         return {"psi": psi, "force": force, "disp": disp}

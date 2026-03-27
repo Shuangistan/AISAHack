@@ -99,7 +99,7 @@ class MultiTaskUNet(MechMNISTModel):
         self.disp_head = nn.Conv2d(features[0], 2, 1)
 
         # Strain energy head
-        self.psi_head = nn.Sequential(
+        self.se_head = nn.Sequential(
             nn.AdaptiveAvgPool2d(1),
             nn.Flatten(),
             nn.Linear(bottleneck_ch, 128),
@@ -108,7 +108,7 @@ class MultiTaskUNet(MechMNISTModel):
         )
 
         # Reaction force head
-        self.force_head = nn.Sequential(
+        self.rf_head = nn.Sequential(
             nn.AdaptiveAvgPool2d(1),
             nn.Flatten(),
             nn.Linear(bottleneck_ch, 128),
@@ -132,8 +132,8 @@ class MultiTaskUNet(MechMNISTModel):
 
         x = self.bottleneck(x)
 
-        psi = self.psi_head(x)
-        force = self.force_head(x)
+        psi = self.se_head(x)
+        force = self.rf_head(x)
 
         for upconv, dec, skip in zip(
             self.upconvs, self.decoder_blocks, reversed(skips)

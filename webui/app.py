@@ -74,6 +74,11 @@ AVAILABLE_MODELS = {
         "description": "64×64 FNO with multi-task learning",
         "checkpoint_dir": "experiments/reference_models/fno",
     },
+    "swin": {
+        "label": "Swin Transformer",
+        "description": "64×64 Swin Transformer with multi-task learning",
+        "checkpoint_dir": "experiments/reference_models/swin",
+    },
     # Template for adding more models:
     # "fno": {
     #     "label": "Fourier Neural Operator",
@@ -148,7 +153,7 @@ def load_model_from_registry(model_name):
         
         # Load normalization statistics
         # stats = np.load(stats_path, allow_pickle=True).item()
-        stats = dict(np.load(stats_path))
+        stats = dict(np.load(stats_path,allow_pickle=True))
         
         return model, stats, device, None
     
