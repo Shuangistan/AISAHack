@@ -435,6 +435,219 @@ def get_example_images():
     
     return examples
 
+def make_ab_comparison(binary_255,
+                       a_dx, a_dy, a_se, a_rf,
+                       b_dx, b_dy, b_se, b_rf,
+                       label_a, label_b):
+    """Model A vs Model B comparison figure."""
+    a_mag = np.sqrt(a_dx**2 + a_dy**2)
+    b_mag = np.sqrt(b_dx**2 + b_dy**2)
+
+    # Resize to same shape for error maps
+    h, w = max(a_dx.shape[0], b_dx.shape[0]), max(a_dx.shape[1], b_dx.shape[1])
+    a_dx_r = cv2.resize(a_dx, (w, h))
+    a_dy_r = cv2.resize(a_dy, (w, h))
+    b_dx_r = cv2.resize(b_dx, (w, h))
+    b_dy_r = cv2.resize(b_dy, (w, h))
+    a_mag_r = np.sqrt(a_dx_r**2 + a_dy_r**2)
+    b_mag_r = np.sqrt(b_dx_r**2 + b_dy_r**2)
+
+    fig = plt.figure(figsize=(26, 20))
+    fig.suptitle(f"{label_a} vs {label_b}", fontsize=14, fontweight="bold")
+    gs  = gridspec.GridSpec(4, 6, figure=fig, hspace=0.5, wspace=0.4)
+
+    # Row 0: input
+    ax = fig.add_subplot(gs[0, 0:2])
+    ax.imshow(binary_255, cmap="gray", vmin=0, vmax=255)
+    ax.set_title("Binary pattern", fontsize=10)
+    ax.axis("off")
+
+    # Row 1: displacement fields side by side
+    for col, (title, data, cmap) in enumerate([
+        (f"{label_a} $u_x$", a_dx_r, "RdBu_r"),
+        (f"{label_b} $u_x$", b_dx_r, "RdBu_r"),
+        (f"{label_a} $u_y$", a_dy_r, "RdBu_r"),
+        (f"{label_b} $u_y$", b_dy_r, "RdBu_r"),
+        (f"{label_a} $|u|$", a_mag_r, "viridis"),
+        (f"{label_b} $|u|$", b_mag_r, "viridis"),
+    ]):
+        ax = fig.add_subplot(gs[1, col])
+        if cmap == "RdBu_r":
+            vmax = max(np.abs(data).max(), 1e-6)
+            im   = ax.imshow(data, cmap=cmap, origin="upper", vmin=-vmax, vmax=vmax)
+        else:
+            im = ax.imshow(data, cmap=cmap, origin="upper")
+        ax.set_title(title, fontsize=9)
+        ax.axis("off")
+        plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+
+    # Row 2: error maps A vs B
+    err_x   = np.abs(a_dx_r - b_dx_r)
+    err_y   = np.abs(a_dy_r - b_dy_r)
+    err_mag = np.abs(a_mag_r - b_mag_r)
+    ref_x   = np.abs(b_dx_r).mean() + 1e-10
+    ref_y   = np.abs(b_dy_r).mean() + 1e-10
+    ref_mag = b_mag_r.mean() + 1e-10
+
+    for col, (title, data) in enumerate([
+        ("|Diff| $u_x$",        err_x),
+        ("Rel. diff $u_x$ (%)", err_x / ref_x * 100),
+        ("|Diff| $u_y$",        err_y),
+        ("Rel. diff $u_y$ (%)", err_y / ref_y * 100),
+        ("|Diff| $|u|$",        err_mag),
+        ("Rel. diff $|u|$ (%)", err_mag / ref_mag * 100),
+    ]):
+        ax = fig.add_subplot(gs[2, col])
+        im = ax.imshow(data, cmap="hot_r", origin="upper", vmin=0)
+        ax.set_title(title, fontsize=9)
+        ax.axis("off")
+        plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+
+    # Row 3: overlaid scalar curves
+    ax = fig.add_subplot(gs[3, 0:2])
+    ax.plot(DISP_VALS, a_se, "b-o",  linewidth=2, markersize=6, label=label_a)
+    ax.plot(DISP_VALS, b_se, "r--s", linewidth=2, markersize=6, label=label_b)
+    ax.set_xlabel("d", fontsize=10)
+    ax.set_ylabel("Strain energy", fontsize=10)
+    ax.set_title("Strain energy: A vs B", fontsize=11)
+    ax.legend(fontsize=9)
+    ax.grid(True, alpha=0.3)
+
+    ax = fig.add_subplot(gs[3, 2:4])
+    rf_labels = ["F_left_x", "F_right_x", "F_bottom_y", "F_top_y"]
+    colors    = ["#e74c3c", "#2ecc71", "#3498db", "#f39c12"]
+    for i, (lbl, c) in enumerate(zip(rf_labels, colors)):
+        ax.plot(DISP_VALS, a_rf[:, i], "-o",  color=c, linewidth=2, markersize=5,
+                label=f"A {lbl}", alpha=0.9)
+        ax.plot(DISP_VALS, b_rf[:, i], "--s", color=c, linewidth=2, markersize=5,
+                label=f"B {lbl}", alpha=0.6)
+    ax.set_xlabel("d", fontsize=10)
+    ax.set_ylabel("Reaction force", fontsize=10)
+    ax.set_title("Reaction forces: A vs B", fontsize=11)
+    ax.legend(fontsize=7, loc="upper left", ncol=2)
+    ax.grid(True, alpha=0.3)
+
+    # Error table
+    ax = fig.add_subplot(gs[3, 4:])
+    ax.axis("off")
+    se_diff = np.abs(a_se - b_se)
+    rf_diff = np.abs(a_rf - b_rf)
+    rows = [
+        ["Metric",                   "|Mean diff|",                     "Rel. diff"],
+        ["Strain energy",            f"{se_diff.mean():.4f}",           f"{(se_diff/(np.abs(b_se)+1e-10)*100).mean():.1f}%"],
+        ["Reaction forces",          f"{rf_diff.mean():.4f}",           f"{(rf_diff/(np.abs(b_rf)+1e-10)*100).mean():.1f}%"],
+        ["Displacement u_x (field)", f"{err_x.mean():.4f}",             f"{(err_x/ref_x*100).mean():.1f}%"],
+        ["Displacement u_y (field)", f"{err_y.mean():.4f}",             f"{(err_y/ref_y*100).mean():.1f}%"],
+        ["Displacement |u| (field)", f"{err_mag.mean():.4f}",           f"{(err_mag/ref_mag*100).mean():.1f}%"],
+    ]
+    table = ax.table(cellText=rows[1:], colLabels=rows[0],
+                     cellLoc="center", loc="center", bbox=[0, 0, 1, 1])
+    table.auto_set_font_size(False)
+    table.set_fontsize(10)
+    for (row, col), cell in table.get_celld().items():
+        if row == 0:
+            cell.set_facecolor("#2c3e50")
+            cell.set_text_props(color="white", fontweight="bold")
+        elif row % 2 == 0:
+            cell.set_facecolor("#ecf0f1")
+    ax.set_title(f"Difference summary ({label_a} vs {label_b})", fontsize=11, pad=20)
+    return fig
+
+
+def make_vs_fea_fig(binary_255, ml_dx, ml_dy, ml_se, ml_rf,
+                    fea_dx, fea_dy, fea_se, fea_rf, ml_label):
+    """ML vs FEA comparison."""
+    fea_dx_r  = cv2.resize(fea_dx, (ml_dx.shape[1], ml_dx.shape[0]))
+    fea_dy_r  = cv2.resize(fea_dy, (ml_dy.shape[1], ml_dy.shape[0]))
+    ml_mag    = np.sqrt(ml_dx**2  + ml_dy**2)
+    fea_mag   = np.sqrt(fea_dx_r**2 + fea_dy_r**2)
+
+    fig = plt.figure(figsize=(26, 20))
+    fig.suptitle(f"{ml_label} vs FEA Ground Truth", fontsize=14, fontweight="bold")
+    gs  = gridspec.GridSpec(4, 6, figure=fig, hspace=0.5, wspace=0.4)
+
+    ax = fig.add_subplot(gs[0, 0:2])
+    ax.imshow(binary_255, cmap="gray", vmin=0, vmax=255)
+    ax.set_title("Binary pattern", fontsize=10)
+    ax.axis("off")
+
+    for col, (title, data, cmap) in enumerate([
+        (f"{ml_label} $u_x$", ml_dx,    "RdBu_r"),
+        ("FEA $u_x$",         fea_dx_r, "RdBu_r"),
+        (f"{ml_label} $u_y$", ml_dy,    "RdBu_r"),
+        ("FEA $u_y$",         fea_dy_r, "RdBu_r"),
+        (f"{ml_label} $|u|$", ml_mag,   "viridis"),
+        ("FEA $|u|$",         fea_mag,  "viridis"),
+    ]):
+        ax = fig.add_subplot(gs[1, col])
+        if cmap == "RdBu_r":
+            vmax = max(np.abs(data).max(), 1e-6)
+            im   = ax.imshow(data, cmap=cmap, origin="upper", vmin=-vmax, vmax=vmax)
+        else:
+            im = ax.imshow(data, cmap=cmap, origin="upper")
+        ax.set_title(title, fontsize=9)
+        ax.axis("off")
+        plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+
+    err_x   = np.abs(ml_dx   - fea_dx_r)
+    err_y   = np.abs(ml_dy   - fea_dy_r)
+    err_mag = np.abs(ml_mag  - fea_mag)
+    for col, (title, data) in enumerate([
+        ("|Error| $u_x$",        err_x),
+        ("Rel. error $u_x$ (%)", err_x / (np.abs(fea_dx_r).mean()+1e-10) * 100),
+        ("|Error| $u_y$",        err_y),
+        ("Rel. error $u_y$ (%)", err_y / (np.abs(fea_dy_r).mean()+1e-10) * 100),
+        ("|Error| $|u|$",        err_mag),
+        ("Rel. error $|u|$ (%)", err_mag / (fea_mag.mean()+1e-10) * 100),
+    ]):
+        ax = fig.add_subplot(gs[2, col])
+        im = ax.imshow(data, cmap="hot_r", origin="upper", vmin=0)
+        ax.set_title(title, fontsize=9)
+        ax.axis("off")
+        plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+
+    ax = fig.add_subplot(gs[3, 0:2])
+    ax.plot(DISP_VALS, ml_se,  "b-o",  linewidth=2, markersize=6, label=ml_label)
+    ax.plot(DISP_VALS, fea_se, "r--s", linewidth=2, markersize=6, label="FEA")
+    ax.set_xlabel("d", fontsize=10); ax.set_ylabel("Strain energy", fontsize=10)
+    ax.set_title(f"Strain energy: {ml_label} vs FEA", fontsize=11)
+    ax.legend(fontsize=9); ax.grid(True, alpha=0.3)
+
+    ax = fig.add_subplot(gs[3, 2:4])
+    rf_labels = ["F_left_x", "F_right_x", "F_bottom_y", "F_top_y"]
+    colors    = ["#e74c3c", "#2ecc71", "#3498db", "#f39c12"]
+    for i, (lbl, c) in enumerate(zip(rf_labels, colors)):
+        ax.plot(DISP_VALS, ml_rf[:, i],  "-o",  color=c, linewidth=2, markersize=5,
+                label=f"{ml_label} {lbl}", alpha=0.9)
+        ax.plot(DISP_VALS, fea_rf[:, i], "--s", color=c, linewidth=2, markersize=5,
+                label=f"FEA {lbl}", alpha=0.6)
+    ax.set_xlabel("d", fontsize=10); ax.set_ylabel("Reaction force", fontsize=10)
+    ax.set_title(f"Reaction forces: {ml_label} vs FEA", fontsize=11)
+    ax.legend(fontsize=7, loc="upper left", ncol=2); ax.grid(True, alpha=0.3)
+
+    ax = fig.add_subplot(gs[3, 4:])
+    ax.axis("off")
+    se_rel = np.abs(ml_se-fea_se)/(np.abs(fea_se)+1e-10)*100
+    rf_rel = np.abs(ml_rf-fea_rf)/(np.abs(fea_rf)+1e-10)*100
+    rows = [
+        ["Metric",                   "Mean |error|",                        "Mean rel. error"],
+        ["Strain energy",            f"{np.abs(ml_se-fea_se).mean():.4f}",  f"{se_rel.mean():.1f}%"],
+        ["Reaction forces",          f"{np.abs(ml_rf-fea_rf).mean():.4f}",  f"{rf_rel.mean():.1f}%"],
+        ["Displacement u_x (field)", f"{err_x.mean():.4f}",                 f"{(err_x/(np.abs(fea_dx_r).mean()+1e-10)*100).mean():.1f}%"],
+        ["Displacement u_y (field)", f"{err_y.mean():.4f}",                 f"{(err_y/(np.abs(fea_dy_r).mean()+1e-10)*100).mean():.1f}%"],
+        ["Displacement |u| (field)", f"{err_mag.mean():.4f}",               f"{(err_mag/(fea_mag.mean()+1e-10)*100).mean():.1f}%"],
+    ]
+    table = ax.table(cellText=rows[1:], colLabels=rows[0],
+                     cellLoc="center", loc="center", bbox=[0, 0, 1, 1])
+    table.auto_set_font_size(False); table.set_fontsize(10)
+    for (row, col), cell in table.get_celld().items():
+        if row == 0:
+            cell.set_facecolor("#2c3e50")
+            cell.set_text_props(color="white", fontweight="bold")
+        elif row % 2 == 0:
+            cell.set_facecolor("#ecf0f1")
+    ax.set_title(f"Error summary ({ml_label} vs FEA)", fontsize=11, pad=20)
+    return fig
 
 # ═════════════════════════════════════════════
 # SIDEBAR: MODEL SELECTION
@@ -577,16 +790,42 @@ def run_and_display(binary_255, display_img, mode, pattern_name):
                 st.pyplot(fig, use_container_width=True)
             
             elif tab_type == "comparison":
-                st.info("Comparison plots for multiple models will be displayed here.")
-                # Can be extended to show side-by-side comparisons
-            
+                if len(selected_models) >= 2:
+                    # Grab the first two models selected in the sidebar
+                    model_a = selected_models[0]
+                    model_b = selected_models[1]
+                    
+                    a_dx, a_dy, a_se, a_rf = results[model_a]
+                    b_dx, b_dy, b_se, b_rf = results[model_b]
+                    
+                    label_a = AVAILABLE_MODELS[model_a]["label"]
+                    label_b = AVAILABLE_MODELS[model_b]["label"]
+                    
+                    fig_ab = make_ab_comparison(
+                        binary_255, 
+                        a_dx, a_dy, a_se, a_rf,
+                        b_dx, b_dy, b_se, b_rf,
+                        label_a, label_b
+                    )
+                    st.pyplot(fig_ab, use_container_width=True)
+                    
+                    if len(selected_models) > 2:
+                        st.warning("Currently showing comparison for the first two selected models only.")
+                else:
+                    st.info("Select at least two models in the sidebar to view comparison.") 
+                               
             elif tab_type == "vs_fea":
                 model_name = data
                 dx, dy, se, rf = results[model_name]
                 fea_dx, fea_dy, fea_se, fea_rf = st.session_state.fea_results
-                st.info(f"Comparison between {AVAILABLE_MODELS[model_name]['label']} and FEA")
-                # Can be extended to show side-by-side comparisons with error metrics
-            
+                
+                label = AVAILABLE_MODELS[model_name]['label']
+                
+                fig_vs_fea = make_vs_fea_fig(
+                    binary_255, dx, dy, se, rf,
+                    fea_dx, fea_dy, fea_se, fea_rf, label
+                )
+                st.pyplot(fig_vs_fea, use_container_width=True)            
             elif tab_type == "fea":
                 fea_dx, fea_dy, fea_se, fea_rf = st.session_state.fea_results
                 fig = make_single_fig(binary_255, binary_255, "gray", fea_dx, fea_dy,
