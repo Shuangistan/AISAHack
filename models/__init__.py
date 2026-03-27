@@ -14,28 +14,26 @@ from models.base import MechMNISTModel
 from models.unet import UNetConfig, UNetMultiRegression, MultiTaskLoss, count_parameters
 from models.unet_small import UNetSmallConfig, MultiTaskUNet
 from models.fno import FNOConfig, MultiTaskFNO
+from models.swin import SwinConfig, MultiTaskSwin
 
 MODEL_REGISTRY: dict[str, type[MechMNISTModel]] = {
     "unet": UNetMultiRegression,
     "unet_small": MultiTaskUNet,
     "fno": MultiTaskFNO,
+    "swin": MultiTaskSwin,
 }
 
 CONFIG_REGISTRY: dict[str, type] = {
     "unet": UNetConfig,
     "unet_small": UNetSmallConfig,
     "fno": FNOConfig,
+    "swin": SwinConfig,
 }
 
 
 def get_model(config) -> MechMNISTModel:
-    """Instantiate the model specified by config.model_name."""
-    if config.model_name not in MODEL_REGISTRY:
-        raise ValueError(
-            f"Unknown model '{config.model_name}'. "
             f"Available: {sorted(MODEL_REGISTRY)}"
-        )
-    return MODEL_REGISTRY[config.model_name].from_config(config)
+            return MODEL_REGISTRY[config.model_name].from_config(config)
 
 
 def default_config(model_name: str = "unet"):
@@ -73,6 +71,8 @@ __all__ = [
     "MultiTaskUNet",
     "FNOConfig",
     "MultiTaskFNO",
+    "SwinConfig",
+    "MultiTaskSwin",
     "MultiTaskLoss",
     "count_parameters",
     "MODEL_REGISTRY",

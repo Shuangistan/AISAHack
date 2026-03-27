@@ -1,0 +1,23 @@
+# ============================================================================
+# requirements-ui-only.txt
+# ============================================================================
+# Minimal dependencies for running just the Streamlit UI (app.py)
+# Assumes models are pre-trained and checkpoints exist
+#
+# Install with: pip install -r requirements-ui-only.txt
+#
+# Use this if:
+#   You have pre-trained checkpoints
+#   You only want to run inference via UI
+#   You don't need training capabilities
+# ============================================================================
+
+# Core dependencies for app.py
+torch>=2.0.0,<3.0.0
+streamlit>=1.28.0,<2.0.0
+numpy>=1.24.0,<2.0.0
+opencv-python-headless>=4.8.0,<5.0.0
+matplotlib>=3.7.0,<4.0.0
+
+# For FEA pipeline integration (optional but recommended)
+h5py>=3.9.0,<4.0.0

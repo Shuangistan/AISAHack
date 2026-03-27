@@ -108,7 +108,7 @@ class MechMNISTCahnHilliard(Dataset):
         self,
         data_root: str,
         img_size: int = 256,
-        disp_size: int = 256,
+        disp_size: Optional[int] = None,
         norm_stats: Optional[NormStats] = None,
         indices: Optional[list] = None,
         max_samples: Optional[int] = None,
@@ -118,7 +118,7 @@ class MechMNISTCahnHilliard(Dataset):
         super().__init__()
         self.data_root = Path(data_root)
         self.img_size = img_size
-        self.disp_size = disp_size
+        self.disp_size = disp_size if disp_size is not None else img_size
         self.norm_stats = norm_stats
         self.input_transform = input_transform
         self.target_keys = set(target_keys) if target_keys is not None else {"psi", "force", "disp"}
@@ -239,7 +239,7 @@ class MechMNISTCahnHilliard(Dataset):
     def _find_file(self, prefix: str) -> Optional[str]:
         """Look for a summary file with various extensions."""
         root = self.data_root
-        for ext in [".txt", ".npy", ".csv", ".gz"]:
+        for ext in [ ".npy",".txt", ".csv", ".gz"]:
             p = root / f"{prefix}{ext}"
             if p.exists():
                 return str(p)
@@ -415,7 +415,7 @@ def create_dataloaders(
     # Load full dataset (without normalization) to compute stats.
     # Always load disp here so we can compute its normalization stats.
     full_ds = MechMNISTCahnHilliard(
-        data_root, img_size=img_size, max_samples=max_samples
+        data_root, img_size=img_size, disp_size=img_size, max_samples=max_samples
     )
 
     n = len(full_ds)
@@ -444,15 +444,15 @@ def create_dataloaders(
 
     # Create split datasets with normalization, model transforms, and target selection
     train_ds = MechMNISTCahnHilliard(
-        data_root, img_size, norm_stats=norm, indices=train_idx,
+        data_root, img_size, disp_size=img_size, norm_stats=norm, indices=train_idx,
         max_samples=max_samples, input_transform=train_tf, target_keys=target_keys,
     )
     val_ds = MechMNISTCahnHilliard(
-        data_root, img_size, norm_stats=norm, indices=val_idx,
+        data_root, img_size, disp_size=img_size, norm_stats=norm, indices=val_idx,
         input_transform=eval_tf, target_keys=target_keys,
     )
     test_ds = MechMNISTCahnHilliard(
-        data_root, img_size, norm_stats=norm, indices=test_idx,
+        data_root, img_size, disp_size=img_size, norm_stats=norm, indices=test_idx,
         input_transform=eval_tf, target_keys=target_keys,
     )
 

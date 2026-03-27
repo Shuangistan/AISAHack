@@ -1,0 +1,79 @@
+# ============================================================================
+# Mechanical MNIST Cahn-Hilliard - Requirements
+# ============================================================================
+# This requirements.txt covers:
+#   - ML Model training & inference (train.py, app.py)
+#   - Streamlit UI (app.py)
+#   - Image preprocessing (preprocess_image.py, visualize.py)
+#   - FEA pipeline (NumpyImageToGmsh.py, Equibiaxial_Hyperelastic.py)
+#   - Data handling (dataset.py)
+#
+# Install with: pip install -r requirements.txt
+# ============================================================================
+
+# ─────────────────────────────────────────────────────────────────────────
+# DEEP LEARNING & ML
+# ─────────────────────────────────────────────────────────────────────────
+torch>=2.0.0,<3.0.0               # PyTorch for neural networks
+torchvision>=0.15.0,<1.0.0        # Computer vision utilities for torch
+
+# ─────────────────────────────────────────────────────────────────────────
+# USER INTERFACE
+# ─────────────────────────────────────────────────────────────────────────
+streamlit>=1.28.0,<2.0.0          # Web UI framework
+
+# ─────────────────────────────────────────────────────────────────────────
+# DATA & COMPUTATION
+# ─────────────────────────────────────────────────────────────────────────
+numpy>=1.24.0,<2.0.0              # Numerical computing (constrained for compatibility)
+pandas>=1.5.0,<3.0.0              # Data manipulation
+scipy>=1.11.0,<2.0.0              # Scientific computing
+
+# ─────────────────────────────────────────────────────────────────────────
+# IMAGE PROCESSING
+# ─────────────────────────────────────────────────────────────────────────
+opencv-python-headless>=4.8.0,<5.0.0       # Computer vision library (cv2)
+Pillow>=10.0.0,<11.0.0            # Image processing (PIL)
+
+# ─────────────────────────────────────────────────────────────────────────
+# VISUALIZATION & PLOTTING
+# ─────────────────────────────────────────────────────────────────────────
+matplotlib>=3.7.0,<4.0.0          # Plotting library
+
+# ─────────────────────────────────────────────────────────────────────────
+# ML UTILITIES
+# ─────────────────────────────────────────────────────────────────────────
+scikit-learn>=1.3.0,<2.0.0        # Machine learning utilities (metrics, preprocessing)
+tqdm>=4.66.0,<5.0.0               # Progress bars
+
+# ─────────────────────────────────────────────────────────────────────────
+# FEA PIPELINE (Mesh generation & simulation)
+# ─────────────────────────────────────────────────────────────────────────
+pygmsh==6.1.0                     # Mesh generation (pinned for compatibility)
+meshio==5.3.4                     # Mesh I/O format handler (pinned for compatibility)
+gmsh>=4.10.0,<5.0.0               # Backend mesh generator
+h5py>=3.9.0,<4.0.0                # HDF5 file format support
+
+# ─────────────────────────────────────────────────────────────────────────
+# UTILITIES
+# ─────────────────────────────────────────────────────────────────────────
+rich>=13.5.0,<14.0.0              # Pretty terminal output
+
+# ─────────────────────────────────────────────────────────────────────────
+# OPTIONAL: FENICS FOR FEA (if you want to run FEA locally)
+# ─────────────────────────────────────────────────────────────────────────
+# Note: FEniCS is typically installed via apt (Ubuntu):
+#   sudo add-apt-repository ppa:fenics-packages/fenics
+#   sudo apt-get install fenics python3-ufl
+# Uncomment below if using Windows or if pip install works in your environment:
+# fenics>=2019.1.0  # Commented out - install via apt on Linux
+# python-ufl>=2021.1.0  # Uncomment if needed
+
+# ─────────────────────────────────────────────────────────────────────────
+# DEVELOPMENT TOOLS (Optional - comment out for production)
+# ─────────────────────────────────────────────────────────────────────────
+# black>=23.0.0,<24.0.0            # Code formatter
+# flake8>=6.1.0,<7.0.0             # Linter
+# pytest>=7.4.0,<8.0.0             # Testing framework
+# ipython>=8.12.0,<9.0.0           # Interactive shell
+# jupyter>=1.0.0,<2.0.0            # Jupyter notebooks

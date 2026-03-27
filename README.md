@@ -22,6 +22,7 @@ architectures through a shared training pipeline, dataset, and experiment tracki
 | `unet` | 5-level U-Net, 5-level encoder/decoder + scalar head | 256×256 | ~8M | AdamW | Cosine + warmup |
 | `unet_small` | 4-level U-Net, shared encoder + 3 heads | 64×64 | ~2M | Adam | ReduceLROnPlateau |
 | `fno` | Fourier Neural Operator, 4 FNO blocks + 3 heads | 64×64 | ~2M | Adam | ReduceLROnPlateau |
+| `swin` | Swin Transformer encoder + CNN decoder + scalar heads | 64×64 | ~3M | AdamW | Cosine + warmup |
 
 Each model has its own configuration class that pins all training hyperparameters
 independently of the shared defaults in `config.py`.
@@ -40,7 +41,8 @@ independently of the shared defaults in `config.py`.
 │   ├── __init__.py         # MODEL_REGISTRY, CONFIG_REGISTRY, get_model()
 │   ├── unet.py             # UNetConfig + UNetMultiRegression
 │   ├── unet_small.py       # UNetSmallConfig + MultiTaskUNet
-│   └── fno.py              # FNOConfig + MultiTaskFNO
+│   ├── fno.py              # FNOConfig + MultiTaskFNO
+│   └── swin.py             # SwinConfig + MultiTaskSwin
 │
 ├── experiments/
 │   ├── runs/               # Auto-generated per-run directories
@@ -53,7 +55,8 @@ independently of the shared defaults in `config.py`.
 │   └── reference_models/   # Pre-trained reference checkpoints, one per model
 │       ├── unet/
 │       ├── unet_small/
-│       └── fno/
+│       ├── fno/
+│       └── swin/
 │
 ├── data/                   # Downloaded dataset (created by setup_data.py)
 ```
@@ -116,6 +119,9 @@ python train.py --model unet_small --data_root ./data
 
 # Train the FNO (64×64, Adam, plateau schedule)
 python train.py --model fno --data_root ./data
+
+# Train the Swin Transformer (64×64, AdamW, cosine schedule)
+python train.py --model swin --data_root ./data
 ```
 
 ### Common overrides
@@ -256,5 +262,6 @@ three tasks during training.
 | `unet` | — | — | — |
 | `unet_small` | — | — | — |
 | `fno` | — | — | — |
+| `swin` | — | — | — |
 
 *To be filled after benchmark runs.*
