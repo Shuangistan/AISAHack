@@ -33,7 +33,7 @@ CONFIG_REGISTRY: dict[str, type] = {
 
 def get_model(config) -> MechMNISTModel:
             f"Available: {sorted(MODEL_REGISTRY)}"
-    return MODEL_REGISTRY[config.model_name].from_config(config)
+            return MODEL_REGISTRY[config.model_name].from_config(config)
 
 
 def default_config(model_name: str = "unet"):

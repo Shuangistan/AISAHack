@@ -62,23 +62,23 @@ AVAILABLE_MODELS = {
     "unet": {
         "label": "UNet Multi-Regression",
         "description": "256×256 U-Net with auxiliary scalar heads",
-        "checkpoint_dir": "checkpoints/unet",
+        "checkpoint_dir": "experiments/reference_models/unet",
     },
-    "unet_lite": {
+    "unet_small": {
         "label": "UNet Multi-Regression 64x64",
         "description": "64×64 U-net with multi-task learning",
-        "checkpoint_dir": "checkpoints/unet_lite",
+        "checkpoint_dir": "experiments/reference_models/unet_small",
     },
     "fno": {
         "label": "Fourier Neural Operator",
         "description": "64×64 FNO with multi-task learning",
-        "checkpoint_dir": "checkpoints/fno",
+        "checkpoint_dir": "experiments/reference_models/fno",
     },
     # Template for adding more models:
     # "fno": {
     #     "label": "Fourier Neural Operator",
     #     "description": "64×64 FNO with multi-task learning",
-    #     "checkpoint_dir": "checkpoints/fno",
+    #     "checkpoint_dir": "experiments/reference_models/fno",
     # },
 }
 
